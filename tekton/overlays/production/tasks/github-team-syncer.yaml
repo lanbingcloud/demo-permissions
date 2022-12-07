@@ -1,0 +1,64 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: ClusterTask
+metadata:
+  name: github-team-syncer
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/categories: CLI
+    tekton.dev/tags: cli
+    tekton.dev/displayName: "github-team-syncer"
+    tekton.dev/platforms: "linux/amd64"
+spec:
+  params:
+  - name: event-type
+    type: string
+  - name: org-name
+    type: string
+  - name: team-name
+    type: string
+  - name: repo-id
+    type: string
+  - name: image
+    description: the image with kubernetes-python
+    type: string
+    default: ghcr.io/nautes-labs/demo-bot:0.0.1-ba841f5efee7914798580606be150f1b5bc36ddb
+  steps:
+    - name: sync-github-repo
+      image: $(params.image)
+      script: |
+        #!/usr/bin/env python3
+        from kubernetes import client, config
+        from kubernetes.client.rest import ApiException
+        
+        org_name = "$(params.org-name)"
+        team_name = "$(params.team-name)"
+        repo_id = "$(params.repo-id)"
+        event_type = "$(params.event-type)"
+        ns_name = "repo-" + repo_id
+        group_name = org_name + ":" + team_name
+        rb_name = group_name
+
+        config.load_incluster_config()
+        v1 = client.RbacAuthorizationV1Api()
+          
+        body = client.V1RoleBinding(
+            metadata = client.V1ObjectMeta(
+                name = rb_name),
+            role_ref = client.V1RoleRef(
+                api_group = "rbac.authorization.k8s.io",
+                kind = "ClusterRole",
+                name = "admin"),
+            subjects = [client.V1Subject(
+                kind = "Group",
+                name = group_name,
+                namespace = ns_name)])
+
+        if event_type == "added_to_repository":
+          v1.create_namespaced_role_binding(body = body, namespace = ns_name)
+        elif event_type == "removed_from_repository":
+          v1.delete_namespaced_role_binding(name = rb_name, namespace = ns_name)
+
+

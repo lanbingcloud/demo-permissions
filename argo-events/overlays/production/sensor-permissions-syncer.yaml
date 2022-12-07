@@ -1,0 +1,90 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: permissions-syncer
+  namespace: argo-events
+spec:
+  template:
+    serviceAccountName: argo-events-sa
+  dependencies:
+    - name: github-dep-repo
+      eventSourceName: webhook-permissions
+      eventName: lanbingcloud-repo
+    - name: github-dep-team
+      eventSourceName: webhook-permissions
+      eventName: lanbingcloud-team
+  triggers:
+    - template:
+        conditions: "github-dep-repo"
+        name: repo-syncer
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: tekton.dev/v1beta1
+              kind: TaskRun
+              metadata:
+                generateName: github-repo-syncer-
+                namespace: argo-events
+              spec:
+                serviceAccountName: argo-events-sa
+                taskRef:
+                  name: github-repo-syncer
+                  kind: ClusterTask
+                params:
+                - name: event-type
+                  value: event-type
+                - name: repo-id
+                  value: repo-id
+          parameters:
+            - src:
+                dependencyName: github-dep-repo
+                dataKey: body.action
+              dest: spec.params.0.value
+            - src:
+                dependencyName: github-dep-repo
+                dataKey: body.repository.id
+              dest: spec.params.1.value
+    - template:
+        conditions: "github-dep-team"
+        name: team-syncer
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: tekton.dev/v1beta1
+              kind: TaskRun
+              metadata:
+                generateName: github-team-syncer-
+                namespace: argo-events
+              spec:
+                serviceAccountName: argo-events-sa
+                taskRef:
+                  name: github-team-syncer
+                  kind: ClusterTask
+                params:
+                - name: event-type
+                  value: event-type
+                - name: org-name
+                  value: org-name
+                - name: team-name
+                  value: team-name
+                - name: repo-id
+                  value: repo-id
+          parameters:
+            - src:
+                dependencyName: github-dep-team
+                dataKey: body.action
+              dest: spec.params.0.value
+            - src:
+                dependencyName: github-dep-team
+                dataKey: body.repository.owner.login
+              dest: spec.params.1.value
+            - src:
+                dependencyName: github-dep-team
+                dataKey: body.team.name
+              dest: spec.params.2.value
+            - src:
+                dependencyName: github-dep-team
+                dataKey: body.repository.id
+              dest: spec.params.3.value

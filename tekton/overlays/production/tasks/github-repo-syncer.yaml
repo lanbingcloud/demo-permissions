@@ -1,0 +1,49 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: ClusterTask
+metadata:
+  name: github-repo-syncer
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/categories: CLI
+    tekton.dev/tags: cli
+    tekton.dev/displayName: "github-repo-syncer"
+    tekton.dev/platforms: "linux/amd64"
+spec:
+  params:
+  - name: event-type
+    type: string
+  - name: repo-id
+    type: string
+  - name: image
+    description: the image with kubernetes-python
+    type: string
+    default: ghcr.io/nautes-labs/demo-bot:0.0.1-ba841f5efee7914798580606be150f1b5bc36ddb
+  steps:
+    - name: sync-github-repo
+      image: $(params.image)
+      script: |
+        #!/usr/bin/env python3
+        from kubernetes import client, config
+        from kubernetes.client.rest import ApiException
+        
+        repo_id = "$(params.repo-id)"
+        event_type = "$(params.event-type)"
+        ns_name = "repo-" + repo_id
+        print("repo_id:" + repo_id)
+        print("event_type:" + event_type)
+
+        config.load_incluster_config()
+        v1 = client.CoreV1Api()
+
+        body = client.V1Namespace(
+            metadata = client.V1ObjectMeta(
+                name = ns_name))
+        if event_type == "created":
+          v1.create_namespace(body = body)             
+        elif event_type == "deleted":
+          v1.delete_namespace(name = ns_name)
+
+
